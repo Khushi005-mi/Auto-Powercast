@@ -1,22 +1,28 @@
 import streamlit as st
 import requests
 import pandas as pd
+
 st.set_page_config(
     page_title="Auto PowerCast",
     layout="wide"
 )
+
 if "history" not in st.session_state:
     st.session_state.history = []
 
+if "result" not in st.session_state:
+    st.session_state.result = None
+
+if "payload" not in st.session_state:
+    st.session_state.payload = None
+
 st.title("Auto PowerCast")
 st.subheader("AI-Powered Power Infrastructure Risk Forecasting")
-
 st.markdown("---")
 
 col1, col2 = st.columns(2)
 
 with col1:
-
     project_type = st.selectbox(
         "Project Type",
         ["Solar", "Wind", "Hydro", "Thermal", "Transmission"]
@@ -56,7 +62,6 @@ with col1:
     )
 
 with col2:
-
     planned_duration_months = st.number_input(
         "Planned Duration (Months)",
         min_value=1,
@@ -81,16 +86,12 @@ with col2:
 
     cost_overrun_pct = st.slider(
         "Cost Overrun %",
-        0,
-        50,
-        12
+        0, 50, 12
     )
 
     delay_months = st.slider(
         "Delay Months",
-        0,
-        24,
-        5
+        0, 24, 5
     )
 
 st.markdown("---")
@@ -112,228 +113,177 @@ if st.button("Predict Project Risk"):
     }
 
     try:
-
         response = requests.post(
             "http://127.0.0.1:8000/predict",
             json=payload
         )
-
         response.raise_for_status()
-
         result = response.json()
 
-        # Save prediction history
+        st.session_state.result = result
+        st.session_state.payload = payload
+
         st.session_state.history.append({
             "Project Type": project_type,
-            "Predicted Cost": round(result["predicted_cost_cr"], 2),
-            "Predicted Duration": round(result["predicted_duration_months"], 1),
-            "Risk": result["predicted_risk_level"]
+            "Predicted Cost (Cr)": round(result["predicted_cost_cr"], 2),
+            "Predicted Duration (Months)": round(result["predicted_duration_months"], 1),
+            "Risk Level": result["predicted_risk_level"]
         })
 
-        st.markdown("---")
+    except Exception as e:
+        st.error(f"API Error: {e}. Make sure your FastAPI backend is running on port 8000.")
+        st.session_state.result = None
 
-        st.success("Project Risk Assessment Complete")
+# Show results only if prediction was successful
+if st.session_state.result is not None:
 
-        c1, c2, c3 = st.columns(3)
+    result = st.session_state.result
+    payload = st.session_state.payload
 
-        with c1:
-            st.metric(
-                "Predicted Cost (Cr)",
-                f"₹ {round(result['predicted_cost_cr'], 2)}"
-            )
+    st.markdown("---")
+    st.success("Project Risk Assessment Complete")
 
-        with c2:
-            st.metric(
-                "Predicted Duration",
-                f"{round(result['predicted_duration_months'], 1)} Months"
-            )
+    c1, c2, c3 = st.columns(3)
 
-        with c3:
-            st.metric(
-                "Risk Level",
-                result["predicted_risk_level"]
-            )
+    with c1:
+        st.metric(
+            "Predicted Cost (Cr)",
+            f"₹ {round(result['predicted_cost_cr'], 2)}"
+        )
 
-        risk = result["predicted_risk_level"]
+    with c2:
+        st.metric(
+            "Predicted Duration",
+            f"{round(result['predicted_duration_months'], 1)} Months"
+        )
 
-        if risk == "High":
-            st.error(
-                "⚠ High Risk Project"
-            )
+    with c3:
+        st.metric(
+            "Risk Level",
+            result["predicted_risk_level"]
+        )
 
-        elif risk == "Medium":
-            st.warning(
-                "⚠ Medium Risk Project"
-            )
+    risk = result["predicted_risk_level"]
 
-        else:
-            st.success(
-                "✓ Low Risk Project"
-            )
+    if risk == "High":
+        st.error("⚠ High Risk Project")
+        risk_score = 85
+    elif risk == "Medium":
+        st.warning("⚠ Medium Risk Project")
+        risk_score = 60
+    else:
+        st.success("✓ Low Risk Project")
+        risk_score = 25
 
-        st.markdown("---")
+    st.markdown("---")
+    st.subheader("Executive Summary")
 
-        st.subheader("Executive Summary")
+    st.info(
+        f"""
+        Estimated Final Cost: ₹{round(result['predicted_cost_cr'], 2)} Cr
 
-        st.info(
-            f"""
-            Estimated Final Cost: ₹{round(result['predicted_cost_cr'],2)} Cr
+        Estimated Completion Time: {round(result['predicted_duration_months'], 1)} Months
 
-            Estimated Completion Time: {round(result['predicted_duration_months'],1)} Months
+        Predicted Risk Category: {result['predicted_risk_level']}
+        """
+    )
 
-            Predicted Risk Category: {result['predicted_risk_level']}
+    st.markdown("---")
+    st.subheader("Risk Score")
+    st.metric("Risk Score", f"{risk_score}/100")
+
+    if risk == "High":
+        st.error(
+            """
+            High Risk Project — Recommendations:
+            • Re-evaluate budget allocation
+            • Review contractor performance
+            • Accelerate land acquisition
+            • Increase contingency reserves
+            • Conduct detailed risk assessment
+            """
+        )
+    elif risk == "Medium":
+        st.warning(
+            """
+            Medium Risk Project — Recommendations:
+            • Monitor milestones closely
+            • Track budget deviations monthly
+            • Strengthen contractor coordination
+            • Review schedule risks regularly
+            """
+        )
+    else:
+        st.success(
+            """
+            Low Risk Project — Recommendations:
+            • Proceed with execution
+            • Maintain regular monitoring
+            • Continue current planning strategy
+            • Focus on operational efficiency
             """
         )
 
-        st.markdown("---")
+    st.markdown("---")
+    st.subheader("Cost & Duration Charts")
 
-        st.subheader("Prediction History")
+    chart_col1, chart_col2 = st.columns(2)
 
-        history_df = pd.DataFrame(
-            st.session_state.history
-        )
-
-        st.dataframe(
-            history_df,
-            use_container_width=True
-        )
-
-        st.markdown("---")
-
-        st.subheader("Predicted Cost")
-
+    with chart_col1:
+        st.caption("Predicted Cost (Cr)")
         st.bar_chart(
             pd.DataFrame({
                 "Cost (Cr)": [result["predicted_cost_cr"]]
             })
         )
 
-        st.subheader("Predicted Duration")
-
+    with chart_col2:
+        st.caption("Predicted Duration (Months)")
         st.bar_chart(
             pd.DataFrame({
                 "Duration (Months)": [result["predicted_duration_months"]]
             })
         )
-        st.markdown("---")
 
-        st.subheader("AI Recommendations")
+    st.markdown("---")
+    st.subheader("Prediction History")
 
-        risk = result["predicted_risk_level"]
-        if risk == "High":
-          risk_score = 85
+    if st.session_state.history:
+        history_df = pd.DataFrame(st.session_state.history)
+        st.dataframe(history_df, use_container_width=True)
 
-        elif risk == "Medium":
-          risk_score = 60
+    st.markdown("---")
 
-        else:
-          risk_score = 25
+    report = f"""AUTO POWERCAST — PROJECT REPORT
+===============================
 
-        st.metric(
-            "Risk Score",
-            f"{risk_score}/100"
-)
+Project Type:              {result.get('project_type', payload.get('project_type', 'N/A'))}
+State:                     {payload.get('state', 'N/A')}
+Region:                    {payload.get('region', 'N/A')}
+Capacity (MW):             {payload.get('capacity_mw', 'N/A')}
+Budget (Cr):               {payload.get('sanctioned_budget_cr', 'N/A')}
+Planned Duration (Months): {payload.get('planned_duration_months', 'N/A')}
+Contractor Count:          {payload.get('contractor_count', 'N/A')}
+Land Acquisition Status:   {payload.get('land_acquisition_status', 'N/A')}
+Project Complexity:        {payload.get('project_complexity', 'N/A')}
 
-        if risk == "High":
+---------------------------------
+PREDICTIONS
+---------------------------------
 
-            st.error(
-                """
-                High Risk Project
+Predicted Cost:     ₹{round(result['predicted_cost_cr'], 2)} Cr
+Predicted Duration: {round(result['predicted_duration_months'], 1)} Months
+Predicted Risk:     {result['predicted_risk_level']}
+Risk Score:         {risk_score}/100
 
-                Recommendations:
-                • Re-evaluate budget allocation
-                • Review contractor performance
-                • Accelerate land acquisition
-                • Increase contingency reserves
-                • Conduct detailed risk assessment
-                """
-            )
-
-        elif risk == "Medium":
-
-            st.warning(
-                """
-                Medium Risk Project
-
-                Recommendations:
-                • Monitor milestones closely
-                • Track budget deviations monthly
-                • Strengthen contractor coordination
-                • Review schedule risks regularly
-                """
-            )
-
-        else:
-
-            st.success(
-                """
-                Low Risk Project
-
-                Recommendations:
-                • Proceed with execution
-                • Maintain regular monitoring
-                • Continue current planning strategy
-                • Focus on operational efficiency
-                """
-            )
-
-    except Exception as e:
-                st.markdown("---")
-
-    report = f"""
-        POWERCAST AI PROJECT REPORT
-        ===========================
-
-        Project Type: {project_type}
-        State: {state}
-        Region: {region}
-
-        Capacity (MW): {capacity_mw}
-        Budget (Cr): {sanctioned_budget_cr}
-
-        Planned Duration: {planned_duration_months}
-        Contractor Count: {contractor_count}
-
-        Land Acquisition Status: {land_acquisition_status}
-        Project Complexity: {project_complexity}
-
-        ---------------------------------
-
-        PREDICTIONS
-
-        Predicted Cost: {round(result['predicted_cost_cr'], 2)} Cr
-
-        Predicted Duration:
-        {round(result['predicted_duration_months'], 1)} Months
-
-        Predicted Risk:
-        {result['predicted_risk_level']}
-
-        ---------------------------------
-
-        Generated by PowerCast AI
-        """
+---------------------------------
+Generated by Auto PowerCast AI
+Ministry of Power — ATH Hackathon 0.1 2026
+"""
 
     st.download_button(
-            label="Download Project Report",
-            data=report,
-            file_name="powercast_report.txt",
-            mime="text/plain"
-        )
-
-try:
-
-    response = requests.post(
-        "http://127.0.0.1:8000/predict",
-        json=payload
-    )
-
-    response.raise_for_status()
-
-    result = response.json()
-
-except Exception as e:
-
-    st.error(
-        f"API Error: {e}"
+        label="Download Project Report",
+        data=report,
+        file_name="autopowercast_report.txt",
+        mime="text/plain"
     )
